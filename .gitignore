@@ -1,0 +1,15 @@
+# Python .egg metadata, regenerated from source files by setuptools
+/*.egg-info
+
+# Notebooks
+.ipynb_checkpoints
+
+# Vim
+*.swp
+*.un~
+
+# Compiled Python modules
+*.pyc
+
+# Setuptools build data
+build/*
