@@ -1,0 +1,277 @@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/nerdamer@1.1.6/nerdamer.core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/nerdamer@1.1.6/Algebra.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/nerdamer@1.1.6/Calculus.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/nerdamer@1.1.6/Solve.js"></script>
+
+<p id="inputBox">
+    <span id="inputBoxCaption">Effect Size: </span>
+    <input type="float" placeholder="0.05" id="inputBoxValue">
+    <input type="button" onclick="updatePlotData()" value="Submit">
+</p>
+
+<p>
+    <span id="testSplitCaption">Test Split: </span>
+    <input type="range" min="10" max="90" value="50" step = "10" onclick="sliderUpdate()" id="testSplitSlider">
+    <em id="testSplitTracker">50 %</em>
+</p>
+
+<input type="radio" name="plotType" id="sampleSize" onclick="sampleSizeRadioButton()" checked>
+<label for="sampleSize">Total Sample Size Required</label><br>
+<input type="radio" name="plotType" id="mde" onclick="mdeRadioButton()">
+<label for="mde">Minimal Detectable Effect</label><br>
+
+<canvas id="plot" width="400" height="400"></canvas>
+<script>
+    // -- CONSTANTS -- //
+    // Define plot canvas
+    const CANVAS = document.getElementById("plot");
+    const CONTEXT = CANVAS.getContext('2d');
+
+    // Define x-axis
+    const X_AXIS = [
+        0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
+        0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99
+    ];
+
+    // Define statistical constants
+    //const Z_ALPHA = 1.96; const Z_BETA = 0.84;
+    const Z_CONST = (1.96 + 0.84) * (1.96 + 0.84);
+    const SUBTITLE_SPECS = ', 80% Power, 5% Significance';
+
+    // Define user-input defaults
+    const ABS_EFFECT_SIZE_DEFAULT = 0.05;
+    const SAMPLE_SIZE_DEFAULT = 1000;
+
+    // -- CREATE GLOBAL VARIABLES -- //
+    var global_default_value;
+    var global_plot_data;
+    var global_title_text;
+    var global_power_graph;
+    var global_power_graph_options;
+    var global_test_split;
+
+    // -- CREATE INITIAL CHART -- //
+    global_default_value = ABS_EFFECT_SIZE_DEFAULT;
+    global_test_split = 0.50;
+
+    global_plot_data = solveSampleSize(global_default_value);
+    global_title_text = [
+        'Power Plot: Total Sample Size Required'
+        ,'Effect Size = ' + ABS_EFFECT_SIZE_DEFAULT*100 + '%' + SUBTITLE_SPECS
+    ];
+
+    global_power_graph_options = {
+        title: {
+            display: true,
+            text: global_title_text
+        },
+        legend: {
+            display: false
+        },
+        tooltips: {
+            mode: 'index',
+            intersect: false,
+        },
+        hover: {
+            mode: 'nearest',
+            intersect: true
+        },
+        scales: {
+            xAxes: [{
+                display: true,
+                ticks: {
+                    min: 0.,
+                    max: 1.
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: 'Base Rate'
+                }
+            }],
+            yAxes: [{
+                display: true,
+                ticks: {
+                    min: 0.,
+                    max: Math.max(...global_plot_data)*1.1
+                },
+                scaleLabel: {
+                    display: true,
+                    labelString: 'Total Sample Size Required'
+                }
+            }]
+        }
+    }
+
+    // Instantiate chart w/ default inputs (don't redeclare!)
+    global_power_graph = new Chart(CONTEXT, {
+        type: 'line',
+        data: {
+            labels: X_AXIS,
+            datasets: [{
+                fill: false,
+                data: global_plot_data,
+                backgroundColor: '#009688',
+                borderColor: '#009688',
+            }]
+        },
+        options: global_power_graph_options
+    });
+
+    // -- FUNCTION DEFINITIONS -- //
+    // https://select-statistics.co.uk/calculators/sample-size-calculator-two-proportions/
+    function solveSampleSize(effect_size) {
+        // TODO: global_test_split
+        //var sample_size_array = X_AXIS.map(x => 
+        //    Math.ceil(
+        //        2 * Z_CONST * (2*x*(1-x-effect_size) + effect_size*(1-effect_size))
+        //        /(effect_size*effect_size)
+        //    )
+        //);
+        var const1 = Z_CONST / (effect_size*effect_size*global_test_split*(1-global_test_split));
+        var const2 = 2*global_test_split*effect_size;
+        var const3 = global_test_split*effect_size*(1-effect_size);
+        var sample_size_array = X_AXIS.map(x =>
+            Math.ceil(
+                const1*(x*(1-x-const2)+const3)
+            )
+        )
+        return sample_size_array;
+    }
+
+    function solveMDE(sample_size) {
+        // TODO: global_test_split
+        //var mde_const = 2 * Z_CONST / sample_size;
+        //var mde_array = X_AXIS.map(x =>
+        //    Math.min(
+        //        ...(
+        //            (nerdamer.solve(`2x^2-${ 1+mde_const*x }x-${ mde_const*(x-x*x) }= 0`,'x'))
+        //            .toDecimal()
+        //            .replace(/[\[\]&]+/g, '')
+        //            .split(',')
+        //            .map(x=>Math.abs(+x))
+        //        )
+        //    )
+        //);
+
+        var const1 = sample_size*global_test_split*(1-global_test_split) - Z_CONST*global_test_split;
+        var const2 = Z_CONST*global_test_split;
+        var solve_equation_array = X_AXIS.map(x =>
+            nerdamer.solve(`${ const1 }x^2+${ const2*(1-2*x) }x-${ Z_CONST*x*(1-x) }= 0`,'x')
+            .toDecimal()
+            .replace(/[\[\]&]+/g, '')
+            .split(',')
+            .map(x=>Math.abs(+x))
+        );
+
+        var mde_array = solve_equation_array.map(x => Math.min(...x));
+        var max_mde_array = solve_equation_array.map(x => Math.max(...x));
+        return [mde_array, max_mde_array];
+    }
+
+    function updatePowerGraph(single_dataset, data_points) {
+        // Update graph configs
+        global_power_graph_options.title.text = global_title_text;
+
+        // Recreate graph with new inputs
+        // https://github.com/chartjs/Chart.js/issues/559
+        global_power_graph.destroy();
+
+        if (single_dataset) {
+            global_power_graph_options.scales.yAxes[0].ticks.max = Math.max(...data_points)*1.1;
+            global_power_graph = new Chart(CONTEXT, {
+                type: 'line',
+                data: {
+                    labels: X_AXIS,
+                    datasets: [{
+                        fill: false,
+                        data: data_points,
+                        backgroundColor: '#009688',
+                        borderColor: '#009688',
+                    }]
+                },
+                options: global_power_graph_options
+            });
+        }
+        else {
+            global_power_graph_options.scales.yAxes[0].ticks.max = Math.max(...data_points[1])*1.1;
+            global_power_graph = new Chart(CONTEXT, {
+                type: 'line',
+                data: {
+                    labels: X_AXIS,
+                    datasets: [
+                        {
+                            fill: false,
+                            data: data_points[0],
+                            label: 'Reduction',
+                            backgroundColor: '#FF4081',
+                            borderColor: '#FF4081',
+                        },
+                        {
+                            fill: false,
+                            data: data_points[1],
+                            label: 'Lift',
+                            backgroundColor: '#2196F3',
+                            borderColor: '#2196F3',
+                        }
+                    ]
+                },
+                options: global_power_graph_options
+            });
+        }
+    }
+
+    function updatePlotData() {
+        // Set effect size (if populated)
+        var input_box_value = document.getElementById("inputBoxValue").value;
+        if (input_box_value == '') {
+            input_box_value = global_default_value;
+        }
+
+        var plot_sample_size = document.getElementById("sampleSize").checked;
+        if (plot_sample_size) {
+            global_plot_data = solveSampleSize(input_box_value);
+            global_title_text[1] = 'Effect Size = ' + input_box_value*100 + '%' + SUBTITLE_SPECS
+        }
+        else {
+            global_plot_data = solveMDE(input_box_value);
+            global_title_text[1] = 'Sample Size = ' + input_box_value + SUBTITLE_SPECS
+        }
+
+        updatePowerGraph(plot_sample_size, global_plot_data);
+    }
+
+    function sliderUpdate() {
+        global_test_split = document.getElementById("testSplitSlider").value / 100.;
+        document.getElementById("testSplitTracker").innerHTML = `${ global_test_split } %`;
+        updatePlotData();
+    }
+
+    function sampleSizeRadioButton() {
+        global_default_value = ABS_EFFECT_SIZE_DEFAULT;
+
+        document.getElementById("inputBoxValue").value = '';
+        document.getElementById("inputBoxCaption").innerHTML = "Effect size: ";
+        document.getElementById("inputBoxValue").placeholder = global_default_value;
+
+        global_title_text[0] = 'Power Plot: Total Sample Size Required';
+        global_title_text[1] = 'Effect Size = ' + global_default_value*100 + '%' + SUBTITLE_SPECS
+        global_power_graph_options.scales.yAxes[0].scaleLabel.labelString = 'Total Sample Size Required';
+
+        updatePlotData();
+    }
+
+    function mdeRadioButton() {
+        global_default_value = SAMPLE_SIZE_DEFAULT;
+
+        document.getElementById("inputBoxValue").value = '';
+        document.getElementById("inputBoxCaption").innerHTML = "Sample size: ";
+        document.getElementById("inputBoxValue").placeholder = global_default_value;
+
+        global_title_text[0] = 'Power Plot: Minimal Detectable Effect';
+        global_title_text[1] = 'Sample Size = ' + global_default_value + SUBTITLE_SPECS
+        global_power_graph_options.scales.yAxes[0].scaleLabel.labelString = 'Minimal Detectable Effect';
+
+        updatePlotData();
+    }
+</script>
